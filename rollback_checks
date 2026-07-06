@@ -1,0 +1,19 @@
+SELECT s.sid, s.serial#, s.status, s.taddr, t.addr
+FROM   v$session s
+LEFT JOIN v$transaction t ON t.addr = s.taddr
+WHERE  s.status = 'KILLED';
+
+SELECT sid, seq#, event, state, seconds_in_wait, p1, p2, p3
+FROM   v$session
+WHERE  program LIKE '%SMON%';
+
+SELECT s.sid, s.serial#, s.status, s.event, s.seconds_in_wait,
+       s.blocking_session
+FROM   v$session s
+WHERE  s.status = 'KILLED'
+   OR  s.sid IN (SELECT blocking_session FROM v$session WHERE status = 'KILLED');
+
+SELECT usn, name, status, writes, xacts
+FROM   v$rollstat rs
+JOIN   v$rollname rn ON rn.usn = rs.usn
+WHERE  xacts > 0;

@@ -1,0 +1,7 @@
+SELECT s.sid, t.xidusn, t.used_ublk, t.used_urec,
+       rs.status, rn.name
+FROM   v$session     s
+JOIN   v$transaction t  ON t.addr = s.taddr
+JOIN   v$rollname    rn ON rn.usn  = t.xidusn
+JOIN   v$rollstat    rs ON rs.usn  = t.xidusn
+WHERE  s.sid = 3532;

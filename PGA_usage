@@ -1,0 +1,15 @@
+SELECT sid, serial#, pga_used_mem, pga_alloc_mem, pga_freeable_mem, pga_max_mem
+FROM   v$process p
+JOIN   v$session s ON s.sid = p.addr
+WHERE  s.sid = 3532;
+
+SELECT s.sid, s.serial#, p.spid, p.pga_used_mem
+FROM   v$session s
+JOIN   v$process p ON p.addr = s.paddr
+WHERE  s.sid = 3532;
+
+ps -fp <spid>
+
+
+
+
