@@ -3,7 +3,6 @@
 **Versión del documento:** 1.0
 **Fecha:** Julio 2026
 **Objetivo:** Actualizar el Grid Infrastructure (GI) y el software de base de datos (RDBMS) a la versión **19.31.0.0.0** (RU de abril de 2026) usando `dbaascli`, para cumplir el requisito del equipo de Linux/Sistemas de estar en **19.24 o superior** antes del parcheo de sistema operativo.
-**Audiencia:** Operador de nivel 1 con conocimientos básicos de Linux y Oracle. No se asume ningún conocimiento previo de ExaCC.
 
 ---
 
