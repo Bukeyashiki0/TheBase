@@ -697,26 +697,51 @@ El documento se ejecuta primero en el entorno de práctica y después, tal cual,
 ## Anexo D — Checklist rápido (imprimir y marcar)
 
 ```text
-FASE 0  [ ] Acceso root a nodo1 y nodo2        [ ] AHF y CVU descargados
-        [ ] ZIPs subidos a /tmp de ambos nodos [ ] CHG aprobado (si aplica)
-FASE 1  [ ] dbaascli actualizado (misma versión en ambos nodos)
-        [ ] AHF actualizado nodo1  [ ] AHF actualizado nodo2
-        [ ] CVU copiado en /opt/oracle.ahf/common/cvu en ambos nodos
-FASE 2  [ ] crsctl check cluster -all OK       [ ] Estado [NORMAL]
-        [ ] Versiones y homes anotados (<HOME_VIEJO>, <DB_NAME>)
-        [ ] Espacio validado                   [ ] Informe exachk revisado
-FASE 3  [ ] Imagen BBDD 19.31 descargada (dbimage list muestra APR2026)
-        [ ] (Opcional) Imagen grid descargada
-FASE 4  [ ] Prereqs grid OK
-        [ ] Grid nodo1 parcheado + verificado (ROLLING PATCH esperado)
-        [ ] Grid nodo2 parcheado (desde nodo2) + estado [NORMAL]
-FASE 5  [ ] dbhome 19.31 creado                [ ] Existe en ambos nodos
-        [ ] opatch lspatches del home nuevo OK (<HOME_NUEVO> anotado)
-FASE 6  [ ] Prereqs move OK                    [ ] Move ejecutado sin errores
-        [ ] srvctl config apunta al home nuevo [ ] datapatch SUCCESS en dba_registry_sqlpatch
-        [ ] PDBs en el mismo open_mode que antes
-FASE 7  [ ] Verificación final + evidencias    [ ] Aviso a Linux/Sistemas
-        [ ] Cierre del CHG                     [ ] (D+7/D+14) borrar home viejo
+FASE 0 — Preparación previa
+   [ ] Acceso root a nodo1 y nodo2
+   [ ] AHF y CVU descargados
+   [ ] ZIPs subidos a /tmp de ambos nodos
+   [ ] CHG aprobado (si aplica)
+
+FASE 1 — Actualización de herramientas
+   [ ] dbaascli actualizado (misma versión en ambos nodos)
+   [ ] AHF actualizado nodo1
+   [ ] AHF actualizado nodo2
+   [ ] CVU copiado en /opt/oracle.ahf/common/cvu en ambos nodos
+
+FASE 2 — Estado inicial y prechequeos
+   [ ] crsctl check cluster -all OK
+   [ ] Estado del clúster [NORMAL]
+   [ ] Versiones y homes anotados (<HOME_VIEJO>, <DB_NAME>)
+   [ ] Espacio en disco validado
+   [ ] Informe exachk revisado
+
+FASE 3 — Descarga de imágenes 19.31
+   [ ] Imagen BBDD 19.31 descargada (dbimage list muestra APR2026)
+   [ ] (Opcional) Imagen grid descargada
+
+FASE 4 — Parcheo del Grid
+   [ ] Prereqs grid OK
+   [ ] Grid nodo1 parcheado + verificado (ROLLING PATCH esperado)
+   [ ] Grid nodo2 parcheado (desde nodo2) + estado [NORMAL]
+
+FASE 5 — Nuevo home RDBMS 19.31
+   [ ] dbhome 19.31 creado
+   [ ] Home nuevo existe en ambos nodos
+   [ ] opatch lspatches del home nuevo OK (<HOME_NUEVO> anotado)
+
+FASE 6 — Database move
+   [ ] Prereqs move OK
+   [ ] Move ejecutado sin errores
+   [ ] srvctl config apunta al home nuevo
+   [ ] datapatch SUCCESS en dba_registry_sqlpatch
+   [ ] PDBs en el mismo open_mode que antes
+
+FASE 7 — Verificaciones finales y cierre
+   [ ] Verificación final + evidencias
+   [ ] Aviso a Linux/Sistemas
+   [ ] Cierre del CHG
+   [ ] (D+7/D+14) Borrar home viejo
 ```
 
 ---
