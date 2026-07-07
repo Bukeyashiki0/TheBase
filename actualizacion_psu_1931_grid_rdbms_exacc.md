@@ -8,7 +8,7 @@
 
 ## 1. Convenciones usadas en este documento
 
-Este documento es **neutro**: sirve para cualquier par de nodos del clúster. Se usan los nombres del entorno de práctica (PRO); sustitúyelos por los del entorno que toque (ver Anexo C).
+Este documento es **neutro**: sirve para cualquier par de nodos del clúster. Se usan los nombres del entorno de práctica (PRO); sustitúyelos por los del entorno que toque.
 
 | Marcador en el documento | Significado | Valor en el entorno de práctica |
 |---|---|---|
@@ -26,7 +26,7 @@ Este documento es **neutro**: sirve para cualquier par de nodos del clúster. Se
 
 **Cómo leer los bloques de comandos:** el prompt indica el usuario y el nodo. Por ejemplo, `[root@nodo1 ~]#` significa "conectado como root en el nodo1". Ejecuta solo lo que va después del `#` o `$`.
 
-**Regla de oro:** si un comando falla o muestra `FATAL` o `ERROR`, **detente**, guarda la salida completa y el fichero de log que indica el propio comando, y escala a nivel 2. No improvises. Los `WARNING` se leen, se anotan y normalmente permiten continuar (en este documento se indica cuáles son esperables).
+**Regla de oro:** si un comando falla o muestra `FATAL` o `ERROR`, **detente**, guarda la salida completa y el fichero de log que indica el propio comando, y revisa la causa antes de continuar. No improvises. Los `WARNING` se leen, se anotan y normalmente permiten continuar (en este documento se indica cuáles son esperables).
 
 ---
 
@@ -50,6 +50,17 @@ Este documento es **neutro**: sirve para cualquier par de nodos del clúster. Se
 ## Fase 0 — Preparación previa
 
 **Tiempo estimado: 1 – 2 horas** (depende de las descargas).
+
+### 0.0 Datos de esta ejecución (rellenar antes de empezar)
+
+```text
+✍ Fecha de ejecución:      
+✍ Ejecutado por:           
+✍ Entidad / entorno:       
+✍ Número de CHG:           
+✍ nodo1 (nombre real):     
+✍ nodo2 (nombre real):     
+```
 
 ### 0.1 Qué necesitas antes de empezar
 
@@ -106,7 +117,9 @@ Orden dentro de la fase: primero `dbaascli` (porque es la herramienta que orques
 dbaastools_exa-1.0-1+XX.X.X.X.X_XXXXXX.XXXX.x86_64
 ```
 
-Anota la versión que salga.
+```text
+✍ Versión dbaastools ANTES  — nodo1:   nodo2: 
+```
 
 **Paso 2 — Comprobar si hay actualizaciones disponibles:**
 
@@ -142,7 +155,11 @@ También puedes consultar la última versión publicada por Oracle:
 [root@nodo1 ~]# dbaascli patch tools list
 ```
 
-El último comando debe terminar diciendo `All Nodes have the same tools version`. Si los nodos quedan con versiones distintas, **no continúes**: escala a nivel 2.
+El último comando debe terminar diciendo `All Nodes have the same tools version`. Si los nodos quedan con versiones distintas, **no continúes**: repite el `updateStack` y revisa el log hasta igualarlas.
+
+```text
+✍ Versión dbaastools DESPUÉS (ambos nodos): 
+```
 
 ### 1.2 Actualizar AHF (incluye TFA y exachk)
 
@@ -158,6 +175,10 @@ AHF version: XX.X.X
 ```
 
 `statusahf` debe mostrar los dos nodos con TFA en estado `RUNNING`. Que diga `exachk daemon is not running` es normal (exachk se lanza a demanda).
+
+```text
+✍ Versión AHF ANTES — nodo1:   nodo2: 
+```
 
 **Paso 2 — Comparar con la última versión disponible** en MOS Doc ID 2550798.1. Si la instalada es igual a la descargada, salta al punto 1.3.
 
@@ -185,6 +206,10 @@ AHF version: XX.X.X
 La versión de `ahfctl version` debe ser la nueva y TFA debe quedar `RUNNING` en ambos nodos.
 
 **Paso 5 — Repetir los pasos 1–4 en el nodo2.**
+
+```text
+✍ Versión AHF DESPUÉS — nodo1:   nodo2: 
+```
 
 ### 1.3 Actualizar CVU (Cluster Verification Utility)
 
@@ -251,7 +276,13 @@ Oracle Clusterware active version on the cluster is [19.0.0.0.0]. The cluster up
 (grid@nodo1)$ $ORACLE_HOME/OPatch/opatch lspatches
 ```
 
-Anota: el estado del clúster debe ser **[NORMAL]** (si dice `ROLLING PATCH` es que hay un parcheo a medias: **no continúes**, escala) y la versión de RU actual de la línea `Database Release Update : 19.XX...`.
+Anota: el estado del clúster debe ser **[NORMAL]** (si dice `ROLLING PATCH` es que hay un parcheo a medias: **no continúes** hasta completarlo) y la versión de RU actual de la línea `Database Release Update : 19.XX...`.
+
+```text
+✍ Estado del clúster:              (debe ser NORMAL)
+✍ Versión GI/RU actual (ANTES):    (p. ej. 19.27.0.0.0 — es la
+                                                   <version_anterior> del Anexo A)
+```
 
 **Homes de RDBMS instalados y BBDD que contienen (como root, en nodo1):**
 
@@ -262,6 +293,12 @@ Anota: el estado del clúster debe ser **[NORMAL]** (si dice `ROLLING PATCH` es 
 (Si tu versión no lo soporta, el equivalente antiguo es `dbaascli dbhome info`, pulsando Intro cuando pregunta por el nombre del home.)
 
 Anota para cada home: `HOME_LOC`, `VERSION` y `DBs installed`. El home que tenga la BBDD instalada es tu `<HOME_VIEJO>`.
+
+```text
+✍ <HOME_VIEJO>:            
+✍ Versión RDBMS actual:    
+✍ <DB_NAME>:               
+```
 
 **Nombre de la base de datos:** el campo `DBs installed` del comando anterior es el `<DB_NAME>` que se usará en la Fase 6. Confírmalo con:
 
@@ -310,9 +347,14 @@ La imagen de BBDD ocupa en torno a **35 GB en el ACFS** (`/var/opt/oracle/dbaas_
   `/u01/app/grid/oracle.ahf/data/<nodo1>/exachk/user_root/output/exachk_..._.html`
 - Descárgate el HTML por WinSCP y revísalo.
 
+```text
+✍ Ruta del informe exachk:  
+✍ FAIL/CRITICAL a revisar:  
+```
+
 **Cómo interpretar el informe:**
 
-- `FAIL` / `CRITICAL` relacionados con **clusterware, ASM, espacio, parches de GI/RDBMS** → deben revisarse con nivel 2 **antes** de parchear.
+- `FAIL` / `CRITICAL` relacionados con **clusterware, ASM, espacio, parches de GI/RDBMS** → deben resolverse **antes** de parchear.
 - `CRITICAL` de tipo "ksplice fixes should be installed" o "Exadata critical issue EXxx" → suelen ser del ámbito del **equipo de Linux/Sistemas**; repórtalos pero no bloquean este cambio (consúltalo si hay duda).
 - `WARNING` / `INFO` de mejores prácticas de BBDD (Data Guard, RMAN, parámetros) → se anotan; no bloquean.
 
@@ -347,6 +389,10 @@ Debe aparecer la 19.31:
 ```
 
 Localiza la entrada 19.31 (19c APR 2026 DB Image) y **anota su IMAGE_TAG exacto** tal y como lo muestra tu sistema.
+
+```text
+✍ IMAGE_TAG BBDD 19.31:         ✍ IMAGE_TAG grid 19.31: 
+```
 
 ### 3.2 Descargar la imagen de base de datos 19.31
 
@@ -395,7 +441,7 @@ Debe aparecer `APR2026 (For DB Versions 19000)` en la lista de imágenes disponi
 
 - Ejecuta una batería de validaciones (`validate_nodes`, `validate_disk_space`, `check_patch_conflicts`, etc.) y descarga/desempaqueta el parche. No toca el clúster.
 - Debe terminar con `Grid Patching Prereqs Execution Successful.`
-- Si algún job falla, mira el log que indica (`/var/opt/oracle/log/gridPatch/...`), corrige la causa (habitualmente espacio en disco) o escala. **No sigas con un prereq fallido.**
+- Si algún job falla, mira el log que indica (`/var/opt/oracle/log/gridPatch/...`), corrige la causa (habitualmente espacio en disco) y vuelve a lanzarlo. **No sigas con un prereq fallido.**
 
 ### 4.2 Parchear el nodo1
 
@@ -436,6 +482,11 @@ En este punto el estado será **`[ROLLING PATCH]`** — es lo esperado: indica q
 
 ASM debe reportar 19.31.0.0.0 y los procesos pmon (ASM + instancia de BBDD) deben estar de nuevo levantados en el nodo1. **No pases al nodo2 hasta que las instancias del nodo1 estén arriba.**
 
+```text
+✍ Grid nodo1 — hora inicio:   hora fin: 
+✍ Log PILOT nodo1:          
+```
+
 ### 4.4 Parchear el nodo2
 
 **Conéctate por SSH al nodo2** y ejecuta como root:
@@ -446,6 +497,11 @@ ASM debe reportar 19.31.0.0.0 y los procesos pmon (ASM + instancia de BBDD) debe
 
 Mismo comportamiento y duración que en el nodo1 (60 – 90 min). Debe terminar con `Grid Patching Successful.`
 
+```text
+✍ Grid nodo2 — hora inicio:   hora fin: 
+✍ Log PILOT nodo2:          
+```
+
 ### 4.5 Verificar el clúster completo
 
 **Como grid, en cualquiera de los dos nodos:**
@@ -455,7 +511,7 @@ Mismo comportamiento y duración que en el nodo1 (60 – 90 min). Debe terminar 
 (grid@nodo2)$ crsctl query crs activeversion -f
 ```
 
-Ahora el estado debe ser **`[NORMAL]`**. Si sigue en `ROLLING PATCH`, algún nodo no terminó bien: escala.
+Ahora el estado debe ser **`[NORMAL]`**. Si sigue en `ROLLING PATCH`, algún nodo no terminó bien: revisa sus logs antes de continuar.
 
 ```bash
 (grid@nodo2)$ crsctl query crs releasepatch
@@ -495,7 +551,12 @@ Sin impacto en servicio: se instala un home **nuevo** sin tocar el actual (parch
 
 Debe listar el nuevo home con `VERSION=19.31.0.0`. Anota su `HOME_LOC`: es tu **`<HOME_NUEVO>`**.
 
-Comprueba que el directorio existe físicamente **en los dos nodos** (dbhome create lo despliega en todo el clúster; si no existiera en nodo2, escala antes de continuar):
+```text
+✍ <HOME_NUEVO>:            
+✍ Nombre del home nuevo:   
+```
+
+Comprueba que el directorio existe físicamente **en los dos nodos** (dbhome create lo despliega en todo el clúster; si no existiera en nodo2, revisa el log del `dbhome create` antes de continuar):
 
 ```bash
 [root@nodo1 ~]# ls -d <HOME_NUEVO>
@@ -525,7 +586,7 @@ Debe verse `Database Release Update : 19.31.0.0.XXXXXX` y el OJVM correspondient
 [root@nodo1 ~]# dbaascli database move --dbname <DB_NAME> --ohome <HOME_NUEVO> --executePrereqs
 ```
 
-Debe recorrer los jobs de validación (`validate_database`, `validate_home_existence`, `validate_disk_space`, ...) y terminar con `dbaascli execution completed` sin errores. Si falla algo, corrige o escala antes de seguir.
+Debe recorrer los jobs de validación (`validate_database`, `validate_home_existence`, `validate_disk_space`, ...) y terminar con `dbaascli execution completed` sin errores. Si falla algo, corrígelo antes de seguir.
 
 ### 6.2 Estado previo de la BBDD
 
@@ -540,6 +601,10 @@ SQL> exit
 ```
 
 Las dos instancias deben estar arriba y los PDBs en el open_mode habitual (normalmente `READ WRITE`).
+
+```text
+✍ PDBs y open_mode ANTES del move: 
+```
 
 ### 6.3 Ejecutar el move
 
@@ -557,7 +622,12 @@ Qué hace, en orden:
 4. Ejecuta **datapatch** (aplica los cambios SQL del parche dentro de la BBDD) y **recompila objetos inválidos**. Esta parte puede tardar 15 – 30 minutos y es cuando el comando parece "parado": es normal, espera.
 5. Termina con `dbaascli execution completed`.
 
-**No interrumpas el comando.** Si la sesión se corta a mitad, no lo relances a ciegas: revisa el log (`/var/opt/oracle/log/<DB_NAME>/database/move/pilot_...`) y escala.
+**No interrumpas el comando.** Si la sesión se corta a mitad, no lo relances a ciegas: revisa primero el log (`/var/opt/oracle/log/<DB_NAME>/database/move/pilot_...`).
+
+```text
+✍ Move — hora inicio:   hora fin: 
+✍ Log PILOT del move:  
+```
 
 ### 6.4 Verificar el move
 
@@ -626,11 +696,16 @@ SQL> exit
 
 7. **Limpieza (días después, no el mismo día):** cuando se confirme que todo funciona (1 – 2 semanas), el home viejo puede eliminarse con `dbaascli dbhome delete --oracleHomeName <nombre_home_viejo>`. No lo hagas el día del cambio: es tu vía de rollback.
 
+```text
+✍ Incidencias durante el cambio: 
+✍ Hora de cierre del cambio:    ✍ Evidencias adjuntadas al CHG: [ ] Sí
+```
+
 ---
 
 ## Anexo A — Marcha atrás (rollback)
 
-**Solo bajo indicación de nivel 2 / Oracle Support.** Referencias oficiales: [documentación de dbaascli para ExaCC](https://docs.oracle.com/en/engineered-systems/exadata-cloud-at-customer/ecccm/ecc-using-dbaascli.html).
+**Solo como último recurso y, salvo urgencia, con el respaldo de Oracle Support.** Referencias oficiales: [documentación de dbaascli para ExaCC](https://docs.oracle.com/en/engineered-systems/exadata-cloud-at-customer/ecccm/ecc-using-dbaascli.html).
 
 ### A.1 Volver la BBDD al home antiguo
 
@@ -658,7 +733,7 @@ Si un `grid patch` o `database move` falla a mitad, dbaascli guarda el estado de
 [root@nodo1 ~]# dbaascli grid patch --targetVersion 19.31.0.0.0 --nodeList <nodo> --resume
 ```
 
-Antes de reanudar, revisa siempre el log del fallo con nivel 2.
+Antes de reanudar, revisa siempre el log del fallo y entiende la causa.
 
 ---
 
@@ -670,31 +745,13 @@ Antes de reanudar, revisa siempre el log del fallo con nivel 2.
 | `[FATAL] [DBAAS-70064] Specified cluster nodes '[X]' does not include local node name 'Y'` | Has lanzado el parcheo del nodo X desde el nodo Y | Conéctate al nodo X y lanza el comando allí. |
 | `[WARNING] [DBAAS-70212] The target rpm version ... is already installed` | Las tools ya están en la última versión | Informativo. Continuar. |
 | `The cluster upgrade state is [ROLLING PATCH]` | Parcheo de GI a medias (un nodo hecho, otro no) | Esperado entre el nodo1 y el nodo2. Si aparece al final, falta un nodo: revisar. |
-| Fallo en `validate_disk_space` | Falta espacio en `/u01`, `/u02` o ACFS | Liberar espacio (logs antiguos, backups de homes) y relanzar prereqs. Escalar si hay dudas. |
-| `acquire_lock` falla / lock retenido | Otra operación dbaascli en curso o abortada | No forzar. Comprobar que no hay otra sesión y escalar a nivel 2. |
+| Fallo en `validate_disk_space` | Falta espacio en `/u01`, `/u02` o ACFS | Liberar espacio (logs antiguos, backups de homes) y relanzar prereqs. |
+| `acquire_lock` falla / lock retenido | Otra operación dbaascli en curso o abortada | No forzar. Comprobar que no hay otra sesión activa antes de reintentar. |
 | `dbaascli` se queda "parado" en datapatch | Datapatch en ejecución dentro de la BBDD | Normal (15–30 min). Vigilar el log de PILOT antes de sospechar cuelgue. |
 
 ---
 
-## Anexo C — Pares de nodos por entidad (sustitución de nombres)
-
-El documento se ejecuta primero en el entorno de práctica y después, tal cual, en cada par de PRE sustituyendo `nodo1`/`nodo2`:
-
-| Orden | Entidad | CHG | nodo1 | nodo2 |
-|---|---|---|---|---|
-| 0 (práctica) | PRO GSC (entorno de pruebas) | — | c3cto1gscpro01-1 | c3cto1gscpro01-2 |
-| Lunes | SGT_PRE — SDS | CHG003099391 | c3cnsgtpre04-1 | c3cnsgtpre04-2 |
-| Martes | SCG_PRE — Santander Consumer Alemania | CHG003099453 | c3cnscgpre01-1 | c3cnscgpre01-2 |
-| Miércoles | SAN_PRE — Santander | CHG003099465 | c3cnsanpre01-1 | c3cnsanpre01-2 |
-| Jueves | TOTTA_PRE — Portugal | CHG003099555 | c3cntotpre01-1 | c3cntotpre01-2 |
-| Viernes | CONSUMER HQ_PRE — España | CHG003099560 | c3cnscxpre01-1 | c3cnscxpre01-2 |
-| (Aparte) | CORPORATE_PRE — Corporate | Ya en 19.24: solo parcheo S.O. (martes) | c3cngscpre01-1 | c3cngscpre01-2 |
-
-> CORPORATE_PRE ya cumple el requisito (19.24): **no** se le aplica este documento; el equipo de Linux hace directamente su parcheo de S.O.
-
----
-
-## Anexo D — Checklist rápido (imprimir y marcar)
+## Anexo C — Checklist rápido
 
 ```text
 FASE 0 — Preparación previa
