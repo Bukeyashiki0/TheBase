@@ -1,0 +1,1126 @@
+###############################################################################
+###############################################################################
+
+    ACTUALIZACION DE PSU A 19.31 - GRID INFRASTRUCTURE Y RDBMS
+    Exadata Cloud@Customer (ExaCC)
+
+    Version del documento : 1.0
+    Fecha                 : Julio 2026
+
+###############################################################################
+###############################################################################
+
+OBJETIVO: Subir de version los Oracle Home del Grid Infrastructure (GI) y
+del software de base de datos (RDBMS) a la version 19.31.0.0.0 (RU de abril
+de 2026) usando dbaascli.
+
+COMO LEER ESTE DOCUMENTO:
+  * Las lineas "#####" separan FASES; las lineas "=====" separan apartados.
+  * Los comandos a ejecutar van SOLOS en su propia linea, sin ningun simbolo
+    delante y encerrados entre dos lineas "-----", para localizarlos rapido
+    y copiarlos completos de un solo gesto.
+  * La primera linea de cada recuadro indica CON QUE USUARIO y EN QUE NODO
+    se ejecuta lo que hay debajo, p. ej. [root@nodo1], [grid@nodo1],
+    [oracle@nodo2]. Si la ruta importa, se anade "| ruta: ..."; si no se
+    indica ruta, el comando puede lanzarse desde cualquier directorio.
+    La etiqueta [SQL> dentro de sqlplus] marca sentencias que se lanzan
+    dentro de una sesion sqlplus ya abierta.
+  * Los pasos que se repiten en el otro nodo aparecen duplicados, con su
+    propio recuadro para nodo1 y para nodo2.
+  * Las notas van indentadas y empiezan por "*".
+  * Las advertencias empiezan por "/!\".
+  * Los datos a apuntar empiezan por "[ANOTAR]": escribe el valor a
+    continuacion, directamente en este fichero.
+
+/!\ REGLA DE ORO: si un comando muestra FATAL o ERROR, DETENTE. Guarda la
+    salida completa y el log que indica el propio comando y revisa la causa
+    antes de continuar. No improvises. Los WARNING se leen y se anotan; en
+    esta guia se indica cuales son esperables.
+
+
+###############################################################################
+ 1. CONVENCIONES
+###############################################################################
+
+Documento NEUTRO: sirve para cualquier par de nodos. Sustituye:
+
+  nodo1        -> primer nodo del cluster (sustituir por el hostname real)
+  nodo2        -> segundo nodo del cluster (sustituir por el hostname real)
+  <DB_NAME>    -> nombre de la BBDD (se obtiene en la FASE 2)
+  <HOME_NUEVO> -> ruta del nuevo Oracle Home 19.31 (se obtiene en FASE 5)
+  <HOME_VIEJO> -> ruta del Oracle Home actual (se obtiene en FASE 2)
+
+Usuarios del sistema operativo:
+
+  root   -> casi todos los comandos dbaascli se ejecutan como root
+  grid   -> propietario del GI    (acceso: sudo su - grid)
+  oracle -> propietario del RDBMS (acceso: sudo su - oracle)
+
+
+###############################################################################
+ 2. RESUMEN DE FASES
+###############################################################################
+
+  FASE  DESCRIPCION                                  CORTE DE SERVICIO?
+  ----  -------------------------------------------  ------------------
+  0     Preparacion previa (accesos, descargas)      No
+  1     Herramientas (dbaascli, AHF, CVU, exachk)    No
+  2     Estado inicial y prechequeos (exachk)        No
+  3     Descarga de imagenes 19.31                   No
+  4     Parcheo GI a 19.31 (rolling, nodo a nodo)    No (rolling)
+  5     Nuevo Oracle Home RDBMS 19.31                No
+  6     Database move + datapatch                    Parcial
+  7     Verificaciones finales y cierre              No
+
+Las fases 0-3 pueden hacerse dias antes de la ventana; las fases 4-7 dentro
+de la ventana de cambio (CHG).
+
+
+###############################################################################
+ FASE 0 - PREPARACION PREVIA
+###############################################################################
+
+  [ANOTAR] FASE 0 - hora de inicio:
+
+===============================================================================
+ 0.0 Datos de esta ejecucion (rellenar antes de empezar)
+===============================================================================
+
+  [ANOTAR] Fecha de ejecucion:
+  [ANOTAR] Ejecutado por:
+  [ANOTAR] Entidad / entorno:
+  [ANOTAR] Numero de CHG:
+  [ANOTAR] nodo1 (nombre real):
+  [ANOTAR] nodo2 (nombre real):
+
+===============================================================================
+ 0.1 Que necesitas antes de empezar
+===============================================================================
+
+  * Acceso SSH como root a nodo1 y nodo2 (comprobar conectando a ambos).
+  * Cuenta de My Oracle Support (MOS): https://support.oracle.com
+  * WinSCP instalado en tu PC.
+  * CHG aprobado (si el entorno tiene servicio).
+  * Confirmar que no hay backups/batch en la ventana.
+
+===============================================================================
+ 0.2 Software a descargar EN TU PC
+===============================================================================
+
+  1) AHF (incluye TFA y exachk)
+     Donde: MOS Doc ID 2550798.1 -> ultima version Linux x86-64
+     Fichero: AHF-LINUX_vXX.X.X.zip
+
+  2) CVU (Cluster Verification Utility), version compatible con 19c
+     Donde: https://www.oracle.com/database/technologies/cvu-downloads.html
+            (parche MOS 30839369) -> Linux x86-64
+     Fichero: cvupack_linux_ol7_x86_64.zip (o similar)
+
+/!\ Las imagenes de GI y RDBMS 19.31 NO se descargan de internet: las descarga
+    el propio nodo con "dbaascli cswlib download" (FASE 3). Solo AHF y CVU se
+    suben a mano.
+
+===============================================================================
+ 0.3 Subir los ficheros a los nodos con WinSCP
+===============================================================================
+
+Subir por WinSCP (SFTP) los dos ZIP al directorio /tmp de AMBOS nodos.
+Verificar en cada nodo que estan y que el tamano coincide:
+
+En nodo1 y en nodo2, como root:
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+ls -lh /tmp/AHF-LINUX_v*.zip /tmp/cvupack*.zip
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[root@nodo2]
+ls -lh /tmp/AHF-LINUX_v*.zip /tmp/cvupack*.zip
+-------------------------------------------------------------------------------
+
+===============================================================================
+ 0.4 Sesiones de trabajo
+===============================================================================
+
+Recomendacion: dos terminales por nodo (comandos + logs) y registro de sesion
+activado en PuTTY (Session -> Logging) como evidencia.
+
+  [ANOTAR] FASE 0 - hora de fin:
+
+
+###############################################################################
+ FASE 1 - ACTUALIZACION DE HERRAMIENTAS
+###############################################################################
+
+  [ANOTAR] FASE 1 - hora de inicio:
+
+Sin impacto en servicio. Orden: dbaascli -> AHF -> CVU.
+
+===============================================================================
+ 1.1 Actualizar dbaascli (las "tools" de cloud)
+===============================================================================
+
+El update se lanza en nodo1 y actualiza AMBOS nodos.
+
+PASO 1. Version instalada (ejecutar en AMBOS nodos):
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+rpm -qa | grep -i dbaastools_exa
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[root@nodo2]
+rpm -qa | grep -i dbaastools_exa
+-------------------------------------------------------------------------------
+
+  [ANOTAR] Version dbaastools ANTES - nodo1:
+  [ANOTAR] Version dbaastools ANTES - nodo2:
+
+PASO 2. Comprobar la ultima version publicada por Oracle (nodo1, root):
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli admin showLatestStackVersion
+-------------------------------------------------------------------------------
+
+  * Compara el campo "version" de la salida con la version instalada
+    del PASO 1: si coinciden, ya estas al dia -> salta al punto 1.2.
+
+/!\ En versiones antiguas de las tools la comprobacion se hacia con
+    "dbaascli patch tools list". En dbaascli 26.x ese comando esta obsoleto
+    ([INFO] [DBAAS-14011] deprecated) y falla con "An error occurred during
+    module execution": es esperable, NO uses ese comando; usa el de arriba.
+
+PASO 3. Actualizar el stack (nodo1, root):
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli admin updateStack
+-------------------------------------------------------------------------------
+
+  * Es normal ver muchos jobs "Skipping ... not applicable".
+  * WARNING esperado si ya estaba instalada:
+    [DBAAS-70212] ... already installed
+  * Log: /var/opt/oracle/log/tooling/Update/
+
+PASO 4. Verificar en AMBOS nodos que queda la misma version:
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+rpm -qa | grep -i dbaastools_exa
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[root@nodo2]
+rpm -qa | grep -i dbaastools_exa
+-------------------------------------------------------------------------------
+
+  * La version del rpm debe ser identica en los dos nodos y coincidir con
+    la publicada en el PASO 2.
+
+/!\ Si los nodos quedan con versiones distintas: NO continues; repite el
+    updateStack y revisa el log hasta igualarlas.
+
+  [ANOTAR] Version dbaastools DESPUES (ambos nodos):
+
+===============================================================================
+ 1.2 Actualizar AHF (incluye TFA y exachk)
+===============================================================================
+
+Ejecutar en AMBOS nodos, de uno en uno (primero nodo1, luego nodo2).
+
+PASO 1. Version y estado actual (root):
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+ahfctl version
+ahfctl statusahf
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[root@nodo2]
+ahfctl version
+ahfctl statusahf
+-------------------------------------------------------------------------------
+
+  * TFA debe estar RUNNING en los dos nodos.
+  * "exachk daemon is not running" es normal (se lanza a demanda).
+
+  [ANOTAR] Version AHF ANTES - nodo1:
+  [ANOTAR] Version AHF ANTES - nodo2:
+
+PASO 2. Si la version instalada = la descargada de MOS 2550798.1, salta a 1.3.
+
+PASO 3. Instalar/actualizar EN NODO1 con el ZIP subido en FASE 0 (root).
+
+-------------------------------------------------------------------------------
+[root@nodo1 | ruta: /tmp/ahf_instalacion (la crea el primer comando)]
+mkdir -p /tmp/ahf_instalacion
+cd /tmp/ahf_instalacion
+unzip -o /tmp/AHF-LINUX_v*.zip
+./ahf_setup -local -silent
+-------------------------------------------------------------------------------
+
+  * "-local" instala solo en el nodo actual: por eso se repite en nodo2.
+  * "-silent" omite todas las preguntas (upgrade Y/N, email de
+    notificacion, credenciales MOS) y conserva la configuracion existente.
+    Si se quiere el modo interactivo, quitar "-silent" y responder Y
+    cuando pregunte si hacer upgrade.
+  * "./ahf_setup" debe lanzarse desde /tmp/ahf_instalacion (el "cd" anterior
+    ya te deja alli).
+  * Los PASOS 3 y 5 pueden lanzarse EN PARALELO (uno en cada nodo): la
+    instalacion con "-local" es independiente por nodo y AHF/TFA es solo
+    diagnostico, no afecta al cluster ni a las BBDD.
+
+PASO 4. Verificar EN NODO1:
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+ahfctl version
+ahfctl statusahf
+exachk -v
+-------------------------------------------------------------------------------
+
+PASO 5. Instalar/actualizar EN NODO2 (mismos comandos; puede hacerse en
+        paralelo con el PASO 3):
+
+-------------------------------------------------------------------------------
+[root@nodo2 | ruta: /tmp/ahf_instalacion (la crea el primer comando)]
+mkdir -p /tmp/ahf_instalacion
+cd /tmp/ahf_instalacion
+unzip -o /tmp/AHF-LINUX_v*.zip
+./ahf_setup -local -silent
+-------------------------------------------------------------------------------
+
+PASO 6. Verificar EN NODO2:
+
+-------------------------------------------------------------------------------
+[root@nodo2]
+ahfctl version
+ahfctl statusahf
+exachk -v
+-------------------------------------------------------------------------------
+
+  [ANOTAR] Version AHF DESPUES - nodo1:
+  [ANOTAR] Version AHF DESPUES - nodo2:
+
+===============================================================================
+ 1.3 Actualizar CVU
+===============================================================================
+
+CVU no se "instala": basta dejar el ZIP donde AHF/exachk lo busca.
+Ejecutar en AMBOS nodos (root):
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+cp /tmp/cvupack_linux_*.zip /opt/oracle.ahf/common/cvu/
+ls -ltr /opt/oracle.ahf/common/cvu/
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[root@nodo2]
+cp /tmp/cvupack_linux_*.zip /opt/oracle.ahf/common/cvu/
+ls -ltr /opt/oracle.ahf/common/cvu/
+-------------------------------------------------------------------------------
+
+  [ANOTAR] FASE 1 - hora de fin:
+
+###############################################################################
+ FASE 2 - ESTADO INICIAL Y PRECHEQUEOS
+###############################################################################
+
+  [ANOTAR] FASE 2 - hora de inicio:
+
+Objetivo: fotografiar el estado ANTES de tocar nada.
+GUARDA TODAS LAS SALIDAS de esta fase.
+
+===============================================================================
+ 2.1 Estado general del cluster
+===============================================================================
+
+En nodo1, como grid (sudo su - grid desde root):
+
+-------------------------------------------------------------------------------
+[grid@nodo1]
+crsctl check cluster -all
+-------------------------------------------------------------------------------
+
+  * Ambos nodos deben mostrar CRS-4537, CRS-4529 y CRS-4533 (online).
+
+-------------------------------------------------------------------------------
+[grid@nodo1]
+crsctl stat res -t
+-------------------------------------------------------------------------------
+
+  * ASM, listener y BBDD deben estar ONLINE en ambos nodos.
+
+Procesos de instancia (en AMBOS nodos):
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+ps -ef | grep pmon
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[root@nodo2]
+ps -ef | grep pmon
+-------------------------------------------------------------------------------
+
+  * Debe verse asm_pmon_+ASM1 (o +ASM2) y ora_pmon_<DB_NAME>1 (o 2).
+
+===============================================================================
+ 2.2 Versiones actuales de GI y RDBMS
+===============================================================================
+
+Como grid, en nodo1:
+
+-------------------------------------------------------------------------------
+[grid@nodo1]
+crsctl query crs activeversion -f
+-------------------------------------------------------------------------------
+
+/!\ El estado debe ser [NORMAL]. Si dice [ROLLING PATCH] hay un parcheo a
+    medias: NO continues hasta completarlo.
+
+-------------------------------------------------------------------------------
+[grid@nodo1]
+asmcmd showversion
+$ORACLE_HOME/OPatch/opatch lspatches
+-------------------------------------------------------------------------------
+
+  * Anotar la RU actual (linea "Database Release Update : 19.XX...").
+
+  [ANOTAR] Estado del cluster (debe ser NORMAL):
+  [ANOTAR] Version GI/RU actual ANTES (p.ej. 19.27.0.0.0; es la
+           <version_anterior> del ANEXO A):
+
+Homes RDBMS y BBDD instaladas (root, nodo1):
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli system getDBHomes
+-------------------------------------------------------------------------------
+
+  * Lista TODOS los homes del cluster en JSON: anotar de cada uno su
+    "homeName", "homePath", version y las BBDD asociadas.
+  * El home con la BBDD instalada es tu <HOME_VIEJO> (campo homePath).
+  * Para ver el detalle de un home concreto, ejecutar DESPUES el siguiente
+    comando, poniendo en --oracleHomeName el "homeName" EXACTO que ha
+    mostrado getDBHomes (getDetails no funciona sin ese parametro):
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli dbHome getDetails --oracleHomeName <homeName_visto_en_getDBHomes>
+-------------------------------------------------------------------------------
+
+Nombre exacto de la BBDD (<DB_NAME>) - metodo fiable, via creg:
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+ls -l /var/opt/oracle/creg/
+-------------------------------------------------------------------------------
+
+  * Los ficheros .ini de ese directorio llevan el nombre EXACTO con el que
+    dbaascli conoce cada BBDD: el nombre del fichero sin ".ini" es tu
+    <DB_NAME> (p. ej. dbname1.ini -> DBNAME1). Ese es el valor a usar
+    en todos los "--dbname" de esta guia.
+  * Confirmacion adicional: "srvctl config database" (como oracle) lista
+    los nombres de BBDD registrados en el cluster.
+
+/!\ NO confundir el nombre de la BBDD con el de la INSTANCIA. La salida de
+    "ps -ef | grep pmon" (y otros listados por nodo) muestra
+    <DB_NAME> + numero de nodo: p. ej. para la BBDD DBNAME1, sus INSTANCIAS
+    son DBNAME11 en nodo1 y DBNAME12 en nodo2. Si el valor que manejas
+    termina en un digito que cambia segun el nodo, es la instancia:
+    quitale ese digito final. Si dbaascli devuelve [FATAL] [DBAAS-70104]
+    "database was not found in the environment", el nombre usado no es
+    exacto: consulta el creg de arriba.
+
+  [ANOTAR] <HOME_VIEJO>:
+  [ANOTAR] Version RDBMS actual:
+  [ANOTAR] <DB_NAME>:
+
+Parches del home actual (como oracle):
+
+-------------------------------------------------------------------------------
+[oracle@nodo1]
+$ORACLE_HOME/OPatch/opatch lspatches -oh <HOME_VIEJO>
+-------------------------------------------------------------------------------
+
+===============================================================================
+ 2.3 Espacio en disco (repetir en AMBOS nodos)
+===============================================================================
+
+Como grid (se recomienda >= 15-20 GB libres):
+
+-------------------------------------------------------------------------------
+[grid@nodo1]
+df -h /u01/app/19.0.0.0/grid
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[grid@nodo2]
+df -h /u01/app/19.0.0.0/grid
+-------------------------------------------------------------------------------
+
+Como root (la imagen de BBDD ocupa ~35 GB en ACFS; comprobar >= 50 GB
+libres en /acfs01):
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+df -h /u02
+df -h /acfs01
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[root@nodo2]
+df -h /u02
+df -h /acfs01
+-------------------------------------------------------------------------------
+
+===============================================================================
+ 2.4 Informe exachk
+===============================================================================
+
+En nodo1, como root (recoge datos de los dos nodos).
+Cuando pregunte que BBDD chequear, seleccionar 1 (todas / la que exista):
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+exachk
+-------------------------------------------------------------------------------
+
+  * Al final indica la ruta del informe HTML:
+    /u01/app/grid/oracle.ahf/data/<nodo1>/exachk/user_root/output/exachk_*.html
+  * Descargarlo por WinSCP y revisarlo.
+
+Interpretacion del informe:
+
+  * FAIL/CRITICAL de clusterware, ASM, espacio o parches GI/RDBMS
+    -> resolver ANTES de parchear.
+  * CRITICAL de "ksplice fixes" o "Exadata critical issue EXxx"
+    -> hallazgos de nivel de sistema operativo: anotarlos; no bloquean
+       este cambio.
+  * WARNING/INFO de mejores practicas de BBDD -> anotar; no bloquean.
+
+  [ANOTAR] Ruta del informe exachk:
+  [ANOTAR] FAIL/CRITICAL a revisar:
+
+  [ANOTAR] FASE 2 - hora de fin:
+
+
+###############################################################################
+ FASE 3 - DESCARGA DE LAS IMAGENES 19.31
+###############################################################################
+
+  [ANOTAR] FASE 3 - hora de inicio:
+
+Ejecutar en nodo1 como root. Sin impacto en servicio.
+
+===============================================================================
+ 3.1 Ver imagenes disponibles
+===============================================================================
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli cswlib showImages --product grid
+-------------------------------------------------------------------------------
+
+  * Debe aparecer:  IMAGE_TAG=grid_19.31.0.0.0
+                    VERSION=19.31.0.0.0
+                    DESCRIPTION=19c APR 2026 GI Image
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli cswlib showImages --product database
+-------------------------------------------------------------------------------
+
+  * Localizar la 19.31 (19c APR 2026 DB Image) y ANOTAR su IMAGE_TAG exacto.
+
+  [ANOTAR] IMAGE_TAG BBDD 19.31:
+  [ANOTAR] IMAGE_TAG grid 19.31:
+
+===============================================================================
+ 3.2 Descargar la imagen de BBDD 19.31
+===============================================================================
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli cswlib download --product database --imageTag 19.31.0.0.0
+-------------------------------------------------------------------------------
+
+  * Alternativa con sintaxis antigua (equivalente; 19.31 = bundle APR2026):
+    dbaascli cswlib download --version 19000 --bp APR2026 --cdb yes
+
+Verificar la descarga:
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli dbimage list
+-------------------------------------------------------------------------------
+
+  * Debe aparecer "APR2026 (For DB Versions 19000)" y el df del ACFS que
+    imprime el comando debe seguir mostrando espacio libre.
+
+===============================================================================
+ 3.3 Imagen de grid
+===============================================================================
+
+NO es obligatorio descargarla a mano (grid patch la baja solo en el job
+download_patches). Recomendable dejarla descargada antes de la ventana:
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli cswlib download --product grid --imageTag grid_19.31.0.0.0
+-------------------------------------------------------------------------------
+
+  [ANOTAR] FASE 3 - hora de fin:
+
+
+###############################################################################
+ FASE 4 - PARCHEO DEL GRID A 19.31
+###############################################################################
+
+  [ANOTAR] FASE 4 - hora de inicio:
+
+Rolling: se parchea un nodo cada vez. Mientras se
+parchea un nodo, sus instancias se paran y el servicio queda en el otro.
+
+/!\ MUY IMPORTANTE: el parcheo con --nodeList se ejecuta EN EL PROPIO NODO
+    que se esta parcheando (como root). Si lanzas el nodo2 desde el nodo1
+    falla con: [FATAL] [DBAAS-70064] Specified cluster nodes '[nodo2]' does
+    not include local node name 'nodo1'.
+
+===============================================================================
+ 4.1 Prerrequisitos (nodo1, root). No toca el cluster.
+===============================================================================
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli grid patch --targetVersion 19.31.0.0.0 --executePrereqs
+-------------------------------------------------------------------------------
+
+  * Debe terminar: "Grid Patching Prereqs Execution Successful."
+
+/!\ Si un job falla: mirar el log (/var/opt/oracle/log/gridPatch/...),
+    corregir la causa (habitualmente espacio) y volver a lanzarlo.
+    NO sigas con un prereq fallido.
+
+===============================================================================
+ 4.2 Parchear el nodo1 (en nodo1, como root).
+===============================================================================
+
+/!\ No cierres la sesion (usa screen/tmux si esta disponible).
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli grid patch --targetVersion 19.31.0.0.0 --nodeList <hostname_nodo1>
+-------------------------------------------------------------------------------
+
+  * WARNING esperado: [DBAAS-70139] A subset of nodes ... has been passed.
+  * Para las instancias del nodo, aplica la RU y las vuelve a levantar.
+  * Debe terminar: "Grid Patching Successful."
+
+Seguimiento desde la otra terminal:
+
+-------------------------------------------------------------------------------
+[root@nodo1]  (en la otra terminal)
+tail -f /var/opt/oracle/log/gridPatch/pilot_<fecha>/<fichero_de_log>
+-------------------------------------------------------------------------------
+
+===============================================================================
+ 4.3 Verificar el nodo1 (como grid en nodo1)
+===============================================================================
+
+-------------------------------------------------------------------------------
+[grid@nodo1]
+$ORACLE_HOME/OPatch/opatch lspatches
+-------------------------------------------------------------------------------
+
+  * Debe aparecer "Database Release Update : 19.31.0.0.XXXXXX" y
+    "ACFS RELEASE UPDATE 19.31.0.0.0".
+
+-------------------------------------------------------------------------------
+[grid@nodo1]
+crsctl query crs activeversion -f
+-------------------------------------------------------------------------------
+
+  * Estado esperado AHORA: [ROLLING PATCH] (falta el otro nodo).
+
+-------------------------------------------------------------------------------
+[grid@nodo1]
+asmcmd showversion --softwarepatch
+ps -ef | grep pmon
+-------------------------------------------------------------------------------
+
+/!\ NO pases al nodo2 hasta que ASM y la instancia de BBDD del nodo1 esten
+    levantadas de nuevo.
+
+  [ANOTAR] Grid nodo1 - hora inicio:
+  [ANOTAR] Grid nodo1 - hora fin:
+  [ANOTAR] Log PILOT nodo1:
+
+===============================================================================
+ 4.4 Parchear el nodo2 (conectar por SSH AL NODO2, como root)
+===============================================================================
+
+-------------------------------------------------------------------------------
+[root@nodo2]
+dbaascli grid patch --targetVersion 19.31.0.0.0 --nodeList <hostname_nodo2>
+-------------------------------------------------------------------------------
+
+  * Mismo comportamiento que en el nodo1.
+  * Debe terminar: "Grid Patching Successful."
+
+  [ANOTAR] Grid nodo2 - hora inicio:
+  [ANOTAR] Grid nodo2 - hora fin:
+  [ANOTAR] Log PILOT nodo2:
+
+===============================================================================
+ 4.5 Verificar el cluster completo (como grid, en cualquier nodo)
+===============================================================================
+
+-------------------------------------------------------------------------------
+[grid@nodo1]
+$ORACLE_HOME/OPatch/opatch lspatches
+crsctl query crs activeversion -f
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[grid@nodo2]
+$ORACLE_HOME/OPatch/opatch lspatches
+crsctl query crs activeversion -f
+-------------------------------------------------------------------------------
+
+/!\ Ahora debe decir [NORMAL]. Si sigue en [ROLLING PATCH], algun nodo no
+    termino bien: revisa sus logs antes de continuar.
+
+-------------------------------------------------------------------------------
+[grid@nodo1]
+crsctl query crs releasepatch
+asmcmd showversion --softwarepatch
+ps -ef | grep pmon
+crsctl check cluster -all
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[grid@nodo2]
+crsctl query crs releasepatch
+asmcmd showversion --softwarepatch
+ps -ef | grep pmon
+crsctl check cluster -all
+-------------------------------------------------------------------------------
+
+  * Comprobar en AMBOS nodos: mismos parches, ASM en 19.31.0.0.0, cluster
+    online y pmon levantados.
+
+  ** HITO ** El Grid ya esta en 19.31.
+
+  [ANOTAR] FASE 4 - hora de fin:
+
+
+###############################################################################
+ FASE 5 - NUEVO ORACLE HOME RDBMS 19.31
+###############################################################################
+
+  [ANOTAR] FASE 5 - hora de inicio:
+
+Sin impacto: se instala un home NUEVO sin tocar el actual (out-of-place).
+
+===============================================================================
+ 5.1 Crear el home (nodo1, root).
+===============================================================================
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli dbhome create --version 19.31.0.0.0
+-------------------------------------------------------------------------------
+
+  * Opcional: fijar el nombre con --oracleHomeName OraHome1931
+
+===============================================================================
+ 5.2 Verificar
+===============================================================================
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli system getDBHomes
+-------------------------------------------------------------------------------
+
+  * Debe listar el nuevo home con VERSION=19.31.0.0.
+  * Anotar su "homePath": es tu <HOME_NUEVO>. Anotar tambien su "homeName".
+  * Para ver el detalle del home nuevo, ejecutar DESPUES este comando con
+    el "homeName" EXACTO visto en getDBHomes:
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli dbHome getDetails --oracleHomeName <homeName_visto_en_getDBHomes>
+-------------------------------------------------------------------------------
+
+  [ANOTAR] <HOME_NUEVO>:
+  [ANOTAR] Nombre del home nuevo (homeName):
+
+Comprobar que el directorio existe EN LOS DOS nodos (si no existiera en
+nodo2: revisar el log del dbhome create antes de continuar):
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+ls -d <HOME_NUEVO>
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[root@nodo2]
+ls -d <HOME_NUEVO>
+-------------------------------------------------------------------------------
+
+Parches incluidos en el home nuevo (como oracle):
+
+-------------------------------------------------------------------------------
+[oracle@nodo1]
+<HOME_NUEVO>/OPatch/opatch lspatches -oh <HOME_NUEVO>
+-------------------------------------------------------------------------------
+
+  * Debe verse "Database Release Update : 19.31.0.0.XXXXXX" y el OJVM.
+
+  [ANOTAR] FASE 5 - hora de fin:
+
+
+###############################################################################
+ FASE 6 - MOVER LA BBDD AL NUEVO HOME (database move)
+###############################################################################
+
+  [ANOTAR] FASE 6 - hora de inicio:
+
+Rolling instancia a instancia: el comando para y arranca la instancia de
+cada nodo de una en una. Las sesiones de la instancia que se reinicia se
+cortan; el servicio global se mantiene por la otra instancia.
+
+===============================================================================
+ 6.1 Prerrequisitos del move (nodo1, root).
+===============================================================================
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli database move --dbname <DB_NAME> --ohome <HOME_NUEVO> --executePrereqs
+-------------------------------------------------------------------------------
+
+  * Debe terminar "dbaascli execution completed" sin errores.
+
+/!\ Si falla algo: corregirlo antes de seguir.
+
+===============================================================================
+ 6.2 Estado previo de la BBDD (como oracle, nodo1)
+===============================================================================
+
+-------------------------------------------------------------------------------
+[oracle@nodo1]
+srvctl status database -d <DB_NAME>
+sqlplus / as sysdba
+-------------------------------------------------------------------------------
+
+Dentro de sqlplus, lanzar una a una:
+
+-------------------------------------------------------------------------------
+[SQL> dentro de sqlplus]
+select name, open_mode from v$pdbs;
+select version_full from v$instance;
+exit
+-------------------------------------------------------------------------------
+
+  * Las dos instancias arriba y los PDBs en su open_mode habitual
+    (normalmente READ WRITE).
+
+  [ANOTAR] PDBs y open_mode ANTES del move:
+
+===============================================================================
+ 6.3 Ejecutar el move (nodo1, root).
+===============================================================================
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli database move --dbname <DB_NAME> --ohome <HOME_NUEVO>
+-------------------------------------------------------------------------------
+
+Orden interno: copia configuracion -> para/actualiza/arranca la instancia
+del nodo1 -> repite en nodo2 -> DATAPATCH + recompilacion de objetos
+invalidos -> "dbaascli execution completed".
+
+/!\ En la parte de datapatch el comando parece "parado": es
+    normal, espera. NO interrumpas el comando. Si la sesion se corta a
+    mitad, NO lo relances a ciegas: revisa primero el log
+    /var/opt/oracle/log/<DB_NAME>/database/move/pilot_...
+
+  [ANOTAR] Move - hora inicio:
+  [ANOTAR] Move - hora fin:
+  [ANOTAR] Log PILOT del move:
+
+===============================================================================
+ 6.4 Verificar el move
+===============================================================================
+
+Como root:
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli system getDBHomes
+-------------------------------------------------------------------------------
+
+  * El home 19.31 debe mostrar ahora la BBDD <DB_NAME> asociada;
+    el home viejo debe quedar sin BBDD.
+  * Para mas detalle: dbaascli dbHome getDetails --oracleHomeName <homeName>
+    (con el "homeName" exacto visto en getDBHomes).
+
+Como oracle (en AMBOS nodos):
+
+-------------------------------------------------------------------------------
+[oracle@nodo1]
+srvctl config database -d <DB_NAME> | grep -i "oracle home"
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[oracle@nodo2]
+srvctl config database -d <DB_NAME> | grep -i "oracle home"
+-------------------------------------------------------------------------------
+
+  * Debe apuntar a <HOME_NUEVO>.
+
+-------------------------------------------------------------------------------
+[oracle@nodo1]
+srvctl status database -d <DB_NAME>
+<HOME_NUEVO>/OPatch/opatch lspatches -oh <HOME_NUEVO>
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[oracle@nodo2]
+srvctl status database -d <DB_NAME>
+<HOME_NUEVO>/OPatch/opatch lspatches -oh <HOME_NUEVO>
+-------------------------------------------------------------------------------
+
+Dentro de la BBDD (como oracle):
+
+-------------------------------------------------------------------------------
+[oracle@nodo1]
+sqlplus / as sysdba
+-------------------------------------------------------------------------------
+
+Dentro de sqlplus, lanzar una a una:
+
+-------------------------------------------------------------------------------
+[SQL> dentro de sqlplus]
+select version_full from v$instance;
+-------------------------------------------------------------------------------
+
+  * Debe decir 19.31.0.0.0.
+
+-------------------------------------------------------------------------------
+[SQL> dentro de sqlplus]
+select name, open_mode from v$pdbs;
+-------------------------------------------------------------------------------
+
+  * Igual que antes del move.
+
+-------------------------------------------------------------------------------
+[SQL> dentro de sqlplus]
+select patch_id, status, action, description from dba_registry_sqlpatch order by action_time;
+-------------------------------------------------------------------------------
+
+  * Ultima fila: RU 19.31 con status SUCCESS.
+
+-------------------------------------------------------------------------------
+[SQL> dentro de sqlplus]
+select count(*) from dba_objects where status='INVALID' and owner in ('SYS','SYSTEM');
+-------------------------------------------------------------------------------
+
+  * Idealmente 0.
+
+-------------------------------------------------------------------------------
+[SQL> dentro de sqlplus]
+exit
+-------------------------------------------------------------------------------
+
+  ** HITO ** La BBDD ya corre sobre RDBMS 19.31.
+
+  [ANOTAR] FASE 6 - hora de fin:
+
+
+###############################################################################
+ FASE 7 - VERIFICACIONES FINALES Y CIERRE
+###############################################################################
+
+  [ANOTAR] FASE 7 - hora de inicio:
+
+1. Cluster completo online (como grid):
+
+-------------------------------------------------------------------------------
+[grid@nodo1]
+crsctl check cluster -all
+crsctl stat res -t
+crsctl query crs activeversion -f
+-------------------------------------------------------------------------------
+
+  * [NORMAL] y nivel de parche 19.31.
+
+2. Servicios de la BBDD y PDBs accesibles (como oracle):
+
+-------------------------------------------------------------------------------
+[oracle@nodo1]
+srvctl status database -d <DB_NAME> -v
+-------------------------------------------------------------------------------
+
+3. Listener registrando servicios (probar una conexion de aplicacion si es
+   posible).
+
+4. (Opcional, recomendable) Repetir exachk y comparar con la FASE 2: no
+   deben aparecer FAIL nuevos de GI/RDBMS:
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+exachk
+-------------------------------------------------------------------------------
+
+5. Cerrar el cambio adjuntando evidencias: crsctl query crs activeversion -f,
+   opatch lspatches (grid y RDBMS, ambos nodos), dba_registry_sqlpatch y el
+   informe exachk.
+
+  * El home viejo NO se toca: queda instalado y es la via de rollback
+    (ver ANEXO A).
+
+  [ANOTAR] Incidencias durante el cambio:
+  [ANOTAR] Hora de cierre del cambio:
+  [ANOTAR] Evidencias adjuntadas al CHG (Si/No):
+
+  [ANOTAR] FASE 7 - hora de fin:
+
+
+###############################################################################
+ ANEXO A - MARCHA ATRAS (ROLLBACK)
+###############################################################################
+
+/!\ SOLO como ultimo recurso y, salvo urgencia, con el respaldo de
+    Oracle Support.
+    Referencia: https://docs.oracle.com/en/engineered-systems/exadata-cloud-at-customer/ecccm/ecc-using-dbaascli.html
+
+A.1 Volver la BBDD al home antiguo (el home viejo sigue intacto; vuelve a
+    ejecutar datapatch retirando los cambios de la RU):
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli database move --dbname <DB_NAME> --ohome <HOME_VIEJO>
+-------------------------------------------------------------------------------
+
+A.2 Rollback del parche de Grid (<version_anterior> = la anotada en FASE 2,
+    p.ej. 19.27.0.0.0).
+
+/!\ Operacion delicada: abrir SR con Oracle antes, salvo urgencia.
+
+-------------------------------------------------------------------------------
+[root@nodo1]
+dbaascli grid patch --targetVersion <version_anterior> --rollback
+-------------------------------------------------------------------------------
+
+A.3 Reanudar una ejecucion fallida (dbaascli guarda la sesion PILOT).
+    Revisar SIEMPRE el log del fallo y entender la causa antes de reanudar:
+
+-------------------------------------------------------------------------------
+[root@<nodo que fallo>]
+dbaascli grid patch --targetVersion 19.31.0.0.0 --nodeList <nodo> --resume
+-------------------------------------------------------------------------------
+
+
+###############################################################################
+ ANEXO B - ERRORES Y AVISOS FRECUENTES
+###############################################################################
+
+[WARNING] [DBAAS-70139] A subset of nodes ... has been passed
+   -> Esperado al parchear un solo nodo con --nodeList. Continuar.
+
+[FATAL] [DBAAS-70064] Specified cluster nodes '[X]' does not include local
+node name 'Y'
+   -> Has lanzado el parcheo del nodo X desde el nodo Y.
+      Conectate al nodo X y lanza el comando alli.
+
+[WARNING] [DBAAS-70212] The target rpm version ... is already installed
+   -> Las tools ya estan al dia. Informativo, continuar.
+
+The cluster upgrade state is [ROLLING PATCH]
+   -> Esperado ENTRE el nodo1 y el nodo2. Si aparece al final: falta un
+      nodo, revisar.
+
+Fallo en validate_disk_space
+   -> Falta espacio en /u01, /u02 o ACFS. Liberar espacio y relanzar
+      prereqs.
+
+acquire_lock falla / lock retenido
+   -> Otra operacion dbaascli en curso o abortada. NO forzar. Comprobar
+      que no hay otra sesion activa antes de reintentar.
+
+dbaascli "parado" en datapatch
+   -> Normal. Vigilar el log de PILOT antes de sospechar
+      cuelgue.
+
+
+###############################################################################
+ ANEXO C - CHECKLIST RAPIDO
+###############################################################################
+
+FASE 0 - Preparacion previa
+   [ ] Acceso root a nodo1 y nodo2
+   [ ] AHF y CVU descargados
+   [ ] ZIPs subidos a /tmp de ambos nodos
+   [ ] CHG aprobado (si aplica)
+
+FASE 1 - Actualizacion de herramientas
+   [ ] dbaascli actualizado (misma version en ambos nodos)
+   [ ] AHF actualizado nodo1
+   [ ] AHF actualizado nodo2
+   [ ] CVU copiado en /opt/oracle.ahf/common/cvu en ambos nodos
+
+FASE 2 - Estado inicial y prechequeos
+   [ ] crsctl check cluster -all OK
+   [ ] Estado del cluster [NORMAL]
+   [ ] Versiones y homes anotados (<HOME_VIEJO>, <DB_NAME>)
+   [ ] Espacio en disco validado
+   [ ] Informe exachk revisado
+
+FASE 3 - Descarga de imagenes 19.31
+   [ ] Imagen BBDD 19.31 descargada (dbimage list muestra APR2026)
+   [ ] (Opcional) Imagen grid descargada
+
+FASE 4 - Parcheo del Grid
+   [ ] Prereqs grid OK
+   [ ] Grid nodo1 parcheado + verificado (ROLLING PATCH esperado)
+   [ ] Grid nodo2 parcheado (desde nodo2) + estado [NORMAL]
+
+FASE 5 - Nuevo home RDBMS 19.31
+   [ ] dbhome 19.31 creado
+   [ ] Home nuevo existe en ambos nodos
+   [ ] opatch lspatches del home nuevo OK (<HOME_NUEVO> anotado)
+
+FASE 6 - Database move
+   [ ] Prereqs move OK
+   [ ] Move ejecutado sin errores
+   [ ] srvctl config apunta al home nuevo
+   [ ] datapatch SUCCESS en dba_registry_sqlpatch
+   [ ] PDBs en el mismo open_mode que antes
+
+FASE 7 - Verificaciones finales y cierre
+   [ ] Verificacion final + evidencias
+   [ ] Cierre del CHG
+
+
+###############################################################################
+ REFERENCIAS
+###############################################################################
+
+  * dbaascli (ExaCC):
+    https://docs.oracle.com/en/engineered-systems/exadata-cloud-at-customer/ecccm/ecc-using-dbaascli.html
+  * AHF / TFA / exachk: My Oracle Support, Doc ID 2550798.1
+  * CVU: https://www.oracle.com/database/technologies/cvu-downloads.html
+    (parche MOS 30839369)
+  * My Oracle Support: https://support.oracle.com
+
+###############################################################################
+ FIN DEL DOCUMENTO
+###############################################################################
