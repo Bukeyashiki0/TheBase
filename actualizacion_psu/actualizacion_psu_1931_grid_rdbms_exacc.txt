@@ -39,13 +39,13 @@ Usuarios del sistema operativo:
 
   FASE  DESCRIPCIÓN                                  CORTE DE SERVICIO?
   ----  -------------------------------------------  ------------------
-  0     Preparación previa (accesos, descargas)      No
+  0     Subida de archivos (accesos, descargas)      No
   1     Herramientas (dbaascli, AHF, CVU, exachk)    No
   2     Estado inicial y prechequeos (exachk)        No
   3     Descarga de imágenes 19.31                   No
   4     Parcheo GI a 19.31 (rolling, nodo a nodo)    No (rolling)
   5     Nuevo Oracle Home RDBMS 19.31                No
-  6     Database move + datapatch                    Parcial
+  6     Database move + datapatch                    Rolling con desconexiones
   7     Verificaciones finales y cierre              No
 
 Las fases 0-3 pueden hacerse días antes de la ventana; las fases 4-7 dentro
@@ -53,17 +53,29 @@ de la ventana de cambio (CHG).
 
 
 ###############################################################################
- FASE 0 - PREPARACIÓN PREVIA
+ FASE 0 - SUBIDA DE ARCHIVOS
 ###############################################################################
 
 
 ===============================================================================
- 0.1 Qué necesitas antes de empezar
+ 0.1 Qué se necesita
 ===============================================================================
 
-  * Se necesita acceso root.
   * Se usará WinSCP para subir las actualizaciones de herramientas.
-  * Acceso SSH como root a nodo1 y nodo2 (comprobar conectando a ambos).
+  * Acceso SSH como root a nodo1 y nodo2.
+
+  * AHF (incluye TFA y exachk)
+       Dónde: MOS Doc ID 2550798.1 -> última versión Linux x86-64
+       Fichero: AHF-LINUX_vXX.X.X.zip
+
+  * CVU (Cluster Verification Utility), versión compatible con 19c
+       Dónde: https://www.oracle.com/database/technologies/cvu-downloads.html
+              (parche MOS 30839369) -> Linux x86-64
+       Fichero: cvupack_linux_ol7_x86_64.zip (o similar)
+
+/!\ Las imágenes de GI y RDBMS 19.31 NO se descargan de internet: las descarga
+    el propio nodo con "dbaascli cswlib download" (FASE 3). Solo AHF y CVU se
+    suben a mano.
 
 ===============================================================================
  0.2 Subir los ficheros a los nodos con WinSCP
@@ -952,10 +964,27 @@ dbaascli "parado" en datapatch
 
 
 ###############################################################################
- ANEXO C - CHECKLIST RÁPIDO
+ REFERENCIAS
 ###############################################################################
 
-FASE 0 - Preparación previa
+  * dbaascli (ExaCC):
+    https://docs.oracle.com/en/engineered-systems/exadata-cloud-at-customer/ecccm/ecc-using-dbaascli.html
+  * AHF / TFA / exachk: My Oracle Support, Doc ID 2550798.1
+  * CVU: https://www.oracle.com/database/technologies/cvu-downloads.html
+    (parche MOS 30839369)
+  * My Oracle Support: https://support.oracle.com
+
+
+###############################################################################
+ FIN DEL DOCUMENTO
+###############################################################################
+
+
+###############################################################################
+ CHECKLIST RÁPIDO (hoja aparte, imprimible)
+###############################################################################
+
+FASE 0 - Subida de archivos
    [ ] Acceso root a nodo1 y nodo2
    [ ] AHF y CVU descargados
    [ ] ZIPs subidos a /tmp de ambos nodos
@@ -998,19 +1027,3 @@ FASE 6 - Database move
 FASE 7 - Verificaciones finales y cierre
    [ ] Verificación final + evidencias
    [ ] Cierre del CHG
-
-
-###############################################################################
- REFERENCIAS
-###############################################################################
-
-  * dbaascli (ExaCC):
-    https://docs.oracle.com/en/engineered-systems/exadata-cloud-at-customer/ecccm/ecc-using-dbaascli.html
-  * AHF / TFA / exachk: My Oracle Support, Doc ID 2550798.1
-  * CVU: https://www.oracle.com/database/technologies/cvu-downloads.html
-    (parche MOS 30839369)
-  * My Oracle Support: https://support.oracle.com
-
-###############################################################################
- FIN DEL DOCUMENTO
-###############################################################################
